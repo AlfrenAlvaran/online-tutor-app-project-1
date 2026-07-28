@@ -11,7 +11,7 @@ const CONNECT_OPTIONS = {
   autoIndex: ENV.nodeEnv !== "production",
 };
 
-// Strip credentials before logging (mongodb://user:pass@host/db -> mongodb://host/db)
+
 const redactUri = (rawUri) => rawUri.replace(/\/\/[^@]+@/, "//");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
