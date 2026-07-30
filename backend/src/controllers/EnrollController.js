@@ -1,6 +1,7 @@
 import { ENV } from "../libs/environments.js";
 import { AppError } from "../middlewares/errorHandler.js";
 import InquireEnrollModel from "../schemas/InquireEnrollModel.js";
+import { ProgramModel } from "../models/ProgramModel.js";
 import { isDuplicateSubmission } from "../services/cacheService.js";
 import {
   sendEnrollmentEmails,
@@ -9,9 +10,10 @@ import {
 import { isValidProgramLabel } from "../services/ProgramService.js";
 import { logger } from "../utils/logger.js";
 import {
-  generateEnrollmentToken,
-  hashEnrollmentToken,
-} from "../utils/enrollmentToken.js";
+  issueEnrollment,
+  completeEnrollmentByToken,
+  getEnrollmentInfoByToken,
+} from "../services/Studentservice.js";
 
 const VALID_STATUSES = ["new", "contacted", "enrolled", "closed"];
 
@@ -28,8 +30,7 @@ function serializeInquiry(inquiry) {
     status: inquiry.status,
     emailSent: inquiry.emailSent,
     emailError: inquiry.emailError,
-    formCompleted: inquiry.formCompleted,
-    formCompletedAt: inquiry.formCompletedAt,
+    studentId: inquiry.studentId ? inquiry.studentId.toString() : null,
     createdAt: inquiry.createdAt,
   };
 }
@@ -135,8 +136,11 @@ export async function inquireEnrollList(req, res) {
 }
 
 // ---------------------------------------------------------------------------
-// Admin: change status. Moving INTO "enrolled" mints a one-time token and
-// emails the applicant a link to the public completion form.
+// Admin: change status. Moving INTO "enrolled" creates the real StudentModel
+// record (which mints its own pass token) and emails the applicant a link to
+// the public completion form. Guarded by `studentId` so re-saving an
+// already-enrolled record, or toggling status back and forth, never spawns
+// a duplicate student record or re-sends a new link.
 // ---------------------------------------------------------------------------
 export async function updateInquiryStatus(req, res) {
   const { id } = req.params;
@@ -151,22 +155,44 @@ export async function updateInquiryStatus(req, res) {
     throw new AppError("Inquiry not found", 404);
   }
 
-  const enteringEnrolled = status === "enrolled" && inquiry.status !== "enrolled";
+  const enteringEnrolled =
+    status === "enrolled" && inquiry.status !== "enrolled";
   inquiry.status = status;
 
   let enrollmentLinkSent = false;
 
-  // Only fire the link email on the transition INTO "enrolled" — and only
-  // if the applicant hasn't already completed the form — so re-saving an
-  // already-enrolled record, or toggling status back and forth, never
-  // spams a new link.
-  if (enteringEnrolled && !inquiry.formCompleted) {
-    const { rawToken, hashedToken, expires } = generateEnrollmentToken();
-    inquiry.enrollmentToken = hashedToken;
-    inquiry.enrollmentTokenExpires = expires;
+  if (enteringEnrolled && !inquiry.studentId) {
+    const program = await ProgramModel.findOne({ label: inquiry.program });
+    if (!program) {
+      throw new AppError(
+        "Could not match this inquiry's program to an active program record.",
+        400,
+      );
+    }
+
+    let student;
+    try {
+      student = await issueEnrollment({
+        name: inquiry.name,
+        program: program._id,
+        mode: inquiry.mode,
+        email: inquiry.email,
+      });
+    } catch (error) {
+      logger.error(
+        { err: error, inquiryId: inquiry._id },
+        "Failed to create student record for enrolled inquiry",
+      );
+      throw new AppError(
+        "Could not create the student enrollment record.",
+        500,
+      );
+    }
+
+    inquiry.studentId = student.id;
     await inquiry.save();
 
-    const enrollmentLink = `${ENV.frontend}/enroll/${rawToken}`;
+    const enrollmentLink = `${ENV.frontend}/enroll/${student.token}`;
 
     try {
       await sendEnrollmentConfirmationEmail(inquiry, enrollmentLink);
@@ -196,83 +222,44 @@ export async function updateInquiryStatus(req, res) {
 
 // ---------------------------------------------------------------------------
 // Public: applicant opens the emailed link — fetch just enough to render
-// the form (never expose internal fields like status or message here).
+// the form. Reads from StudentModel via the pass token.
 // ---------------------------------------------------------------------------
 export async function getPublicEnrollmentInfo(req, res) {
   const { token } = req.params;
-  const hashedToken = hashEnrollmentToken(token);
 
-  const inquiry = await InquireEnrollModel.findOne({
-    enrollmentToken: hashedToken,
-    enrollmentTokenExpires: { $gt: new Date() },
-  }).select("+enrollmentToken +enrollmentTokenExpires");
-
-  if (!inquiry) {
+  const student = await getEnrollmentInfoByToken(token);
+  if (!student) {
     throw new AppError("This enrollment link is invalid or has expired.", 404);
   }
-  if (inquiry.formCompleted) {
+  if (student.status === "completed") {
     throw new AppError("This enrollment has already been completed.", 409);
   }
 
   return res.status(200).json({
     success: true,
     data: {
-      name: inquiry.name,
-      program: inquiry.program,
-      mode: inquiry.mode,
+      name: student.name,
+      program: student.program?.label ?? student.program,
+      mode: student.mode,
     },
   });
 }
 
 // ---------------------------------------------------------------------------
-// Public: applicant submits the completion form. Token is single-use —
-// it's cleared once the form is saved.
+// Public: applicant submits the completion form. Writes directly onto the
+// StudentModel record identified by the pass token.
 // ---------------------------------------------------------------------------
 export async function completePublicEnrollment(req, res) {
   const { token } = req.params;
-  const hashedToken = hashEnrollmentToken(token);
 
-  const inquiry = await InquireEnrollModel.findOne({
-    enrollmentToken: hashedToken,
-    enrollmentTokenExpires: { $gt: new Date() },
-  }).select("+enrollmentToken +enrollmentTokenExpires");
+  const result = await completeEnrollmentByToken(token, req.body);
 
-  if (!inquiry) {
+  if (result === "not_found") {
     throw new AppError("This enrollment link is invalid or has expired.", 404);
   }
-  if (inquiry.formCompleted) {
+  if (result === "already_completed") {
     throw new AppError("This enrollment has already been completed.", 409);
   }
-
-  const {
-    birthdate,
-    address,
-    guardianName,
-    guardianContact,
-    schedulePreference,
-    notes,
-  } = req.body;
-
-  if (!birthdate || !address || !guardianName || !guardianContact) {
-    throw new AppError("Please fill in all required fields.", 400);
-  }
-
-  inquiry.enrollmentDetails = {
-    birthdate,
-    address,
-    guardianName,
-    guardianContact,
-    schedulePreference,
-    notes,
-  };
-  inquiry.formCompleted = true;
-  inquiry.formCompletedAt = new Date();
-
-  // Invalidate the token so the link can't be reused.
-  inquiry.enrollmentToken = undefined;
-  inquiry.enrollmentTokenExpires = undefined;
-
-  await inquiry.save();
 
   return res.status(200).json({
     success: true,

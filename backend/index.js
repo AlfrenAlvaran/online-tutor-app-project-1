@@ -15,6 +15,7 @@ import { notFound } from "./src/middlewares/notFound.js";
 import { errorHandler } from "./src/middlewares/errorHandler.js";
 import enrollRouter from "./src/routes/enrollRouter.js";
 import programRouter from "./src/routes/programRouter.js";
+import studentRouter from "./src/routes/Studentroutes.js";
 
 const app = express();
 
@@ -75,6 +76,7 @@ app.get("/api/health", (req, res) => {
 app.use("/v1/api/auth", authRouter); // user routes
 app.use('/v1/api/inquire',enrollRouter );
 app.use('/v1/api/programs', programRouter)
+app.use('/v1/api/students', studentRouter)
 
 
 // 404 handler

@@ -71,13 +71,19 @@ export const completeEnrollmentSchema = z
       .min(2, "Guardian name is too short")
       .regex(/^[\p{L}\s.'-]+$/u, "Guardian name contains invalid characters"),
 
-    guardianContact: z
-      .string()
-      .trim()
-      .min(11, "Guardian contact is too short")
-      .regex(/^[0-9+\s]+$/, "Guardian contact contains invalid characters"),
+    guardianContact: z.string().trim().min(7, "Guardian contact is too short"),
+    // relaxed regex below — see note
 
     schedulePreference: z.string().trim().max(200).optional().default(""),
+
+    attendingSchool: z.enum(["yes", "no", ""]).optional().default(""),
+
+    currentSchool: z
+      .string()
+      .trim()
+      .max(150, "Current school name is too long")
+      .optional()
+      .default(""),
 
     notes: z
       .string()
@@ -86,4 +92,11 @@ export const completeEnrollmentSchema = z
       .optional()
       .default(""),
   })
-  .strict();
+  .strict()
+  .refine(
+    (data) => data.attendingSchool !== "yes" || data.currentSchool.length > 0,
+    {
+      message: "Current school name is required when attending school",
+      path: ["currentSchool"],
+    },
+  );

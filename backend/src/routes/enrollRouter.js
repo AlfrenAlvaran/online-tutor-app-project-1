@@ -1,7 +1,11 @@
 import { Router } from "express";
 import { enrollRateLimiter } from "../middlewares/rateLimiter.js";
 import { validateBody } from "../middlewares/validate.js";
-import { completeEnrollmentSchema, enrollSchema, updateStatusSchema } from "../schemas/enrollSchema.js";
+import {
+  completeEnrollmentSchema,
+  enrollSchema,
+  updateStatusSchema,
+} from "../schemas/enrollSchema.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import {
   completePublicEnrollment,
@@ -44,11 +48,11 @@ enrollRouter.get(
 );
 
 enrollRouter.patch(
-   "/inquiries/:id/status",
-   protect,
-   authorize('admin'),
-   validateBody(updateStatusSchema),
-   asyncHandler(updateInquiryStatus)
-)
+  "/inquiries/:id/status",
+  protect,
+  authorize("admin"),
+  validateBody(updateStatusSchema),
+  asyncHandler(updateInquiryStatus),
+);
 
 export default enrollRouter;

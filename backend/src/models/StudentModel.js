@@ -24,6 +24,15 @@ const schema = new mongoose.Schema(
       minlength: [2, "Name is too short"],
       maxlength: [150, "Name is too long"],
     },
+    // Carried over from the originating inquiry, used to create this
+    // student's login account once the enrollment form is completed.
+    email: {
+      type: String,
+      required: [true, "Email is required"],
+      trim: true,
+      lowercase: true,
+      match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Invalid email address"],
+    },
     program: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Program",
