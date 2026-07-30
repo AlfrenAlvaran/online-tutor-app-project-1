@@ -5,10 +5,16 @@ import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import mongoSanitize from "express-mongo-sanitize";
 import morgan from "morgan";
-
-import { ENV } from "./src/libs/environments.js";
+import { logger } from "./src/utils/logger.js";
+import { corsOrigins, ENV } from "./src/libs/environments.js";
 import { connect, disconnection } from "./src/libs/database.js";
 import authRouter from "./src/routes/authRoute.js";
+import hpp from "hpp";
+import { pinoHttp } from "pino-http";
+import { notFound } from "./src/middlewares/notFound.js";
+import { errorHandler } from "./src/middlewares/errorHandler.js";
+import enrollRouter from "./src/routes/enrollRouter.js";
+import programRouter from "./src/routes/programRouter.js";
 
 const app = express();
 
@@ -16,9 +22,13 @@ const PORT = ENV.port;
 const NODE_ENV = ENV.nodeEnv;
 
 // middlewares
+
+app.disable("x-powered-by");
+app.set("trust-proxy", 1);
+
 app.use(helmet());
+
 app.use(morgan(NODE_ENV === "production" ? "combined" : "dev"));
-app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 // app.use(mongoSanitize());
@@ -28,12 +38,24 @@ app.use((req, res, next) => {
   }
   next();
 });
+
 app.use(
   cors({
-    origin: ENV.frontend || "http://localhost:3000",
+    origin: (origin, callback) => {
+      if (!origin || corsOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
+    methods: ["POST", "GET", "PUT", "DELETE", "PATCH"],
     credentials: true,
   }),
 );
+
+app.use(hpp());
+app.use(express.json({ limit: "20kb" }));
+app.use(pinoHttp({ logger }));
 
 // routes
 
@@ -51,23 +73,14 @@ app.get("/api/health", (req, res) => {
 
 // routes
 app.use("/v1/api/auth", authRouter); // user routes
+app.use('/v1/api/inquire',enrollRouter );
+app.use('/v1/api/programs', programRouter)
+
 
 // 404 handler
-app.use((req, res) => {
-  res.status(404).json({ success: false, message: "Route not found" });
-});
+app.use(notFound);
+app.use(errorHandler);
 
-// global error handler
-
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  const status = err.statusCode || 500;
-  res.status(status).json({
-    success: false,
-    message: err.message || "Internal Server Error",
-    ...(NODE_ENV === "development" && { stack: err.stack }),
-  });
-});
 
 // Database and Server StartUp
 

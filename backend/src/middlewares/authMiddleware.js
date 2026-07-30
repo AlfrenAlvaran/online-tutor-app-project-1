@@ -1,6 +1,7 @@
 import { decode } from "jsonwebtoken";
 import UserModel from "../models/UserModel.js";
 import { verifyToken } from "../utils/token.js";
+import { AppError } from "./errorHandler.js";
 
 export async function protect(req, res, next) {
   try {
@@ -46,4 +47,27 @@ export function restrictTo(...roles) {
     }
     next();
   };
+}
+
+export function requireAuth(req, res, next) {
+  const header = req.headers.authorization;
+
+  if (!header || !header.startWith("Bearer ")) {
+    return next(new AppError("Authentication required", 401));
+  }
+
+  try {
+    const decoded = jwt.verify(token, ENV.secret);
+    req.user = decoded;
+    next();
+  } catch {
+    next(new AppError("Invalid or expired token", 401));
+  }
+}
+
+export function requireAdmin(req, res, next) {
+  if (req.user?.role !== "admin") {
+    return next(new AppError("Admin access required", 403));
+  }
+  next();
 }
