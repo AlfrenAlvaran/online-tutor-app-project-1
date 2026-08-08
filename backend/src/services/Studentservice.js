@@ -48,10 +48,7 @@ function birthdateToPassword(birthdate) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-// Admin: issue a fresh enrollment pass for a program. The token is what
-// the public /inquire/enroll/:token page is keyed off of. `email` is
-// carried over from the originating inquiry and used later to create the
-// student's login account once the enrollment form is completed.
+
 export async function issueEnrollment({ name, email, program, mode }) {
   const programDoc = await ProgramModel.findById(program);
   if (!programDoc) {

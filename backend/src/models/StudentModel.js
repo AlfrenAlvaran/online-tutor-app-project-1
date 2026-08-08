@@ -1,9 +1,19 @@
 import mongoose from "mongoose";
 import { PROGRAM_MODES } from "./ProgramModel.js";
+import { ref } from "node:process";
 const SCHEDULE_PREFERENCES = ["morning", "afternoon", "evening", "weekend"];
 const ATTENDING_SCHOOL_OPTIONS = ["yes", "no"];
 const STATUSES = ["pending", "completed"];
-
+const SCHEDULE_DAY = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+  "",
+];
 const isCompleted = function () {
   return this.status === "completed";
 };
@@ -16,7 +26,6 @@ const schema = new mongoose.Schema(
       trim: true,
     },
 
-    // Snapshot of who the inquiry is for, set when the pass is first issued.
     name: {
       type: String,
       required: [true, "Child's name is required"],
@@ -24,8 +33,7 @@ const schema = new mongoose.Schema(
       minlength: [2, "Name is too short"],
       maxlength: [150, "Name is too long"],
     },
-    // Carried over from the originating inquiry, used to create this
-    // student's login account once the enrollment form is completed.
+
     email: {
       type: String,
       required: [true, "Email is required"],
@@ -119,9 +127,6 @@ const schema = new mongoose.Schema(
       default: "",
     },
 
-    // Post-enrollment tracking: has the child finished the program/session
-    // they enrolled into? Independent of `status`, which only tracks whether
-    // the enrollment *form* was completed.
     sessionFinished: {
       type: Boolean,
       default: false,
@@ -130,7 +135,40 @@ const schema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    assignedTutor: {
+      type: mongoose.Schema.ObjectId,
+      ref: "tutor",
+      default: null,
+    },
+
+    scheduleDay: {
+      type: String,
+      enum: {
+        values: [...SCHEDULE_DAY, ""],
+        message: "{VALUE} is not a valid day",
+      },
+      default: "",
+    },
+
+    scheduleStartTime: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    scheduleEndTime: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    assignedAt: {
+      type: Date,
+      default: null,
+    },
   },
+
   { timestamps: true },
 );
 

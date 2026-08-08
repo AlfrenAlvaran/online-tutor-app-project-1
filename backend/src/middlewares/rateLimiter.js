@@ -8,3 +8,14 @@ export const enrollRateLimiter = rateLimit({
   legacyHeaders: false,
   message: { ok: false, error: "Too many request. Please try again later" },
 });
+
+export const adminWriteLimiter = rateLimit({
+  windowMs: ENV.rateLimitWindowMs,
+  max: ENV.rateLimitMax,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many changes from this IP, please try again later.",
+  },
+});

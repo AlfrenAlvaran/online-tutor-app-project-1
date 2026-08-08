@@ -16,6 +16,7 @@ import { errorHandler } from "./src/middlewares/errorHandler.js";
 import enrollRouter from "./src/routes/enrollRouter.js";
 import programRouter from "./src/routes/programRouter.js";
 import studentRouter from "./src/routes/Studentroutes.js";
+import tutorRouter from "./src/routes/tutorRoute.js";
 
 const app = express();
 
@@ -74,15 +75,14 @@ app.get("/api/health", (req, res) => {
 
 // routes
 app.use("/v1/api/auth", authRouter); // user routes
-app.use('/v1/api/inquire',enrollRouter );
-app.use('/v1/api/programs', programRouter)
-app.use('/v1/api/students', studentRouter)
-
+app.use("/v1/api/inquire", enrollRouter);
+app.use("/v1/api/programs", programRouter);
+app.use("/v1/api/students", studentRouter);
+app.use("/v1/api/tutors", tutorRouter);
 
 // 404 handler
 app.use(notFound);
 app.use(errorHandler);
-
 
 // Database and Server StartUp
 
